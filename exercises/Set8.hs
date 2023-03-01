@@ -133,7 +133,10 @@ renderListExample = renderList justADot (9,11) (9,11)
 --      ["000000","000000","000000"]]
 
 dotAndLine :: Picture
-dotAndLine = todo
+dotAndLine = Picture f
+  where f (Coord 3 4) = white
+        f (Coord _ 8) = pink
+        f _           = black
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -166,10 +169,10 @@ dotAndLine = todo
 --          ["7f0000","7f0000","7f0000"]]
 
 blendColor :: Color -> Color -> Color
-blendColor = todo
+blendColor (Color r1 g1 b1) (Color r2 g2 b2) = Color (div (r1 + r2) 2) (div (g1 + g2) 2) (div (b1 + b2) 2)
 
 combine :: (Color -> Color -> Color) -> Picture -> Picture -> Picture
-combine = todo
+combine f (Picture f1) (Picture f2) = Picture (\coord -> f (f1 coord) (f2 coord))
 
 ------------------------------------------------------------------------------
 
@@ -230,7 +233,9 @@ exampleCircle = fill red (circle 80 100 200)
 --        ["000000","000000","000000","000000","000000","000000"]]
 
 rectangle :: Int -> Int -> Int -> Int -> Shape
-rectangle x0 y0 w h = todo
+rectangle x0 y0 w h = Shape f
+  where f (Coord x y) = (x0<=x)&&(x<x0+w)&&(y0<=y)&&(y<y0+h)
+
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -246,10 +251,10 @@ rectangle x0 y0 w h = todo
 -- shape.
 
 union :: Shape -> Shape -> Shape
-union = todo
+union (Shape f1) (Shape f2) = Shape (\coord -> (f1 coord) || (f2 coord))
 
 cut :: Shape -> Shape -> Shape
-cut = todo
+cut (Shape f1) (Shape f2) = Shape (\coord -> (f1 coord) && ((not.f2 ) coord))
 ------------------------------------------------------------------------------
 
 -- Here's a snowman, built using union from circles and rectangles.
@@ -277,7 +282,7 @@ exampleSnowman = fill white snowman
 --        ["000000","000000","000000"]]
 
 paintSolid :: Color -> Shape -> Picture -> Picture
-paintSolid color shape base = todo
+paintSolid color (Shape f) (Picture ff) = Picture (\coord -> if f coord then color else ff coord)
 ------------------------------------------------------------------------------
 
 allWhite :: Picture
@@ -305,6 +310,20 @@ stripes a b = Picture f
   where f (Coord x y) | even y    = a
                       | otherwise = b
 
+triple :: Color -> Color -> Color -> Picture
+triple a b c = Picture f
+  where f (Coord x y)
+          | mod (x+y) 3 == 0 = a
+          | mod (x+y) 3 == 1 = b
+          | otherwise        = c
+
+tripleStripes :: Color -> Color -> Color -> Picture
+tripleStripes a b c = Picture f
+  where f (Coord x y)
+          | mod (y `div` 10) 3 == 0 = a
+          | mod (y `div` 10) 3 == 1 = b
+          | otherwise        = c
+
 -- You can check them out:
 --   render (stipple red white) 50 50 "stipple.png"
 --   render (stripes pink black) 50 50 "stripes.png"
@@ -322,7 +341,8 @@ stripes a b = Picture f
 --       ["000000","000000","000000","000000","000000"]]
 
 paint :: Picture -> Shape -> Picture -> Picture
-paint pat shape base = todo
+paint (Picture f1) (Shape g) (Picture f2) = Picture (\coord -> (if g coord then f1 else f2) coord)
+
 ------------------------------------------------------------------------------
 
 -- Here's a patterned version of the snowman example. See it by running:
@@ -385,19 +405,21 @@ xy = Picture f
 data Fill = Fill Color
 
 instance Transform Fill where
-  apply = todo
+  apply (Fill c) _ = Picture (\coord -> c)
 
 data Zoom = Zoom Int
   deriving Show
 
 instance Transform Zoom where
-  apply = todo
+  apply (Zoom z) = zoom z
 
 data Flip = FlipX | FlipY | FlipXY
   deriving Show
 
 instance Transform Flip where
-  apply = todo
+  apply FlipX (Picture f) = Picture (f . (\(Coord x y) -> Coord (-x) y))
+  apply FlipY (Picture f) = Picture (f . (\(Coord x y) -> Coord x (-y)))
+  apply FlipXY p = flipXY p
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -412,8 +434,8 @@ instance Transform Flip where
 data Chain a b = Chain a b
   deriving Show
 
-instance Transform (Chain a b) where
-  apply = todo
+instance (Transform a, Transform b) => Transform (Chain a b) where
+  apply (Chain a b) = apply a . apply b
 ------------------------------------------------------------------------------
 
 -- Now we can redefine largeVerticalStripes using the above Transforms.
@@ -451,7 +473,12 @@ data Blur = Blur
   deriving Show
 
 instance Transform Blur where
-  apply = todo
+  apply Blur (Picture f) = Picture (\coord@(Coord x y) -> Color (r $ colors x y) (g $ colors x y) (b $ colors x y))
+    where r = ((`div` 5).sum.map (\(Color r g b)-> r))
+          g = ((`div` 5).sum.map (\(Color r g b)-> g))
+          b = ((`div` 5).sum.map (\(Color r g b)-> b))
+          colors x y = (map f.map (\(a,b)->Coord (x+a) (y+b))) [(0,0),(0,-1),(-1,0),(0,1),(1,0)]
+
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
@@ -469,11 +496,11 @@ data BlurMany = BlurMany Int
   deriving Show
 
 instance Transform BlurMany where
-  apply = todo
+  apply (BlurMany 0) = id
+  apply (BlurMany n) = apply (BlurMany (n-1)) . apply Blur
 ------------------------------------------------------------------------------
 
 -- Here's a blurred version of our original snowman. See it by running
 --   render blurredSnowman 400 300 "blurred.png"
 
 blurredSnowman = apply (BlurMany 2) exampleSnowman
-
